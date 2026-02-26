@@ -24,19 +24,20 @@ chmod +x install-voxtyper.sh
 ./install-voxtyper.sh
 ```
 
-This detects your distribution by reading `/etc/os-release` (using `ID` and `ID_LIKE`) and then installs the correct package names.
+This detects your distribution by reading `/etc/os-release` (using `ID` and `ID_LIKE`) and then installs the **helper packages only** (clipboard, audio, notifications, ydotool).  
+It deliberately does **not** install `whisper-cpp` from your distro repos to avoid pulling in huge GPU / GIS stacks.
 If it does not recognize your `ID`, it will try to guess a family from the available package manager (`dnf`, `apt`, `pacman`, `zypper`) instead.
 
 Supported families out of the box include (examples, not exhaustive):
 
-- **Fedora / Nobara / RHEL family**: `whisper-cpp`, `wl-clipboard`, `alsa-utils`, `libnotify`, `ydotool`
-- **Debian / Ubuntu and derivatives** (incl. PikaOS, Linux Mint, Pop!_OS, etc.): `whisper.cpp`, `wl-clipboard`, `alsa-utils`, `libnotify-bin`, `ydotool`
-- **Arch-based** (Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy, etc.): `wl-clipboard`, `alsa-utils`, `libnotify`, `ydotool` from official repos; `whisper.cpp` from AUR (uses `paru` or `yay` if available)
-- **openSUSE** (Tumbleweed, Leap, MicroOS): `wl-clipboard`, `alsa-utils`, `libnotify`, `ydotool` (Whisper may require manual install)
+- **Fedora / Nobara / RHEL family**: `wl-clipboard`, `alsa-utils`, `libnotify`, `ydotool`
+- **Debian / Ubuntu and derivatives** (incl. PikaOS, Linux Mint, Pop!_OS, etc.): `wl-clipboard`, `alsa-utils`, `libnotify-bin`, `ydotool`
+- **Arch-based** (Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy, etc.): `wl-clipboard`, `alsa-utils`, `libnotify`, `ydotool`
+- **openSUSE** (Tumbleweed, Leap, MicroOS): `wl-clipboard`, `alsa-utils`, `libnotify`, `ydotool`
 - **Void Linux**: `alsa-utils`, `libnotify`, `ydotool`, and optionally `wl-clipboard` if present in the repo
 - **Alpine Linux**: `wl-clipboard`, `alsa-utils`, `libnotify`, and optionally `dotool` as a rough `ydotool` alternative
 - **Gentoo**: `gui-apps/wl-clipboard`, `media-sound/alsa-utils`, `x11-libs/libnotify`, `x11-misc/ydotool`
-- **NixOS**: prints a `configuration.nix` snippet with `openai-whisper-cpp`, `wl-clipboard`, `alsa-utils`, `libnotify`, `ydotool` instead of installing packages directly
+- **NixOS**: prints a `configuration.nix` snippet with `wl-clipboard`, `alsa-utils`, `libnotify`, `ydotool` instead of installing packages directly
 
 Options:
 
@@ -45,13 +46,12 @@ Options:
 
 ### Option B: Manual install (Nobara / Fedora)
 
-On Nobara / Fedora, install the needed tools:
+On Nobara / Fedora, you can install the helper tools yourself:
 
 ```bash
-sudo dnf install whisper-cpp wl-clipboard alsa-utils libnotify ydotool
+sudo dnf install wl-clipboard alsa-utils libnotify ydotool
 ```
 
-- **whisper-cpp**: Whisper speech‑to‑text (`whisper-cli` binary)
 - **wl-clipboard**: `wl-copy` / `wl-paste` for Wayland clipboard
 - **alsa-utils**: `arecord` for capturing microphone audio
 - **libnotify**: `notify-send` desktop notifications
@@ -61,7 +61,27 @@ sudo dnf install whisper-cpp wl-clipboard alsa-utils libnotify ydotool
 
 ---
 
-## 2. Download the Whisper Model
+## 2. Install whisper.cpp (from source, recommended)
+
+To avoid distro `whisper-cpp` packages pulling in huge GPU / GIS stacks (CUDA/ROCm/OpenVINO/proj-data-*, etc.), build `whisper-cli` from source:
+
+```bash
+cd ~/dev              # or wherever you keep source
+git clone https://github.com/ggerganov/whisper.cpp.git
+cd whisper.cpp
+
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j"$(nproc)"
+
+mkdir -p ~/.local/bin
+cp build/bin/whisper-cli ~/.local/bin/whisper-cli
+```
+
+After this, `whisper-cli --help` should work and `voxtyper.sh` will be able to find it.
+
+---
+
+## 3. Download the Whisper Model
 
 Use the **multilingual** base model (works with `--language auto`):
 

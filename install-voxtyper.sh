@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 #
-# VoxTyper: install dependencies per distribution.
+# VoxTyper: install helper dependencies per distribution.
 # Run from the project root (where voxtyper.sh lives).
 # Usage: ./install-voxtyper.sh [--no-script] [--dry-run]
 #
-# Package names differ by distro:
-#   - Whisper: Fedora/Nobara = whisper-cpp; Debian/Ubuntu = whisper.cpp; Arch = whisper.cpp (AUR);
-#              Gentoo (GURU) = app-accessibility/whisper-cpp; NixOS = openai-whisper-cpp (nixpkgs)
+# IMPORTANT:
+# - This script installs ONLY the lightweight helper tools (wl-clipboard, alsa-utils, libnotify/libnotify-bin,
+#   ydotool or dotool). It does NOT install whisper.cpp for you, because distro packages can pull in huge GPU
+#   and GIS stacks (CUDA / ROCm / OpenVINO, etc.).
+# - You are expected to build `whisper-cli` from the official whisper.cpp repository as described in the README.
+#
+# Package notes per distro family:
 #   - notify-send: Debian/Ubuntu = libnotify-bin; Fedora/Arch/openSUSE/Void/Gentoo/Alpine = libnotify
 #   - wl-clipboard, alsa-utils, ydotool (or dotool on Alpine) are usually the same name on supported distros
 #
@@ -85,14 +89,14 @@ run_install() {
 }
 
 install_fedora() {
-  # Fedora, Nobara, RHEL, Rocky, Alma: whisper-cpp, libnotify (not libnotify-bin)
-  local pkgs=(whisper-cpp wl-clipboard alsa-utils libnotify ydotool)
+  # Fedora, Nobara, RHEL, Rocky, Alma: helper deps only (no whisper.cpp here)
+  local pkgs=(wl-clipboard alsa-utils libnotify ydotool)
   run_install sudo dnf install -y "${pkgs[@]}"
 }
 
 install_debian() {
-  # Debian, Ubuntu: whisper.cpp, libnotify-bin for notify-send
-  local pkgs=(whisper.cpp wl-clipboard alsa-utils libnotify-bin ydotool)
+  # Debian, Ubuntu and derivatives: helper deps only (no whisper.cpp here)
+  local pkgs=(wl-clipboard alsa-utils libnotify-bin ydotool)
   if command -v apt-get >/dev/null 2>&1; then
     run_install sudo apt-get update
     run_install sudo apt-get install -y "${pkgs[@]}"
@@ -103,38 +107,21 @@ install_debian() {
 }
 
 install_arch() {
-  # Arch: official repos have wl-clipboard, alsa-utils, libnotify, ydotool
-  # whisper.cpp is in AUR only
+  # Arch-based: official repos have wl-clipboard, alsa-utils, libnotify, ydotool.
+  # Do NOT auto-install whisper.cpp from AUR here; build from source instead (see README).
   local main_pkgs=(wl-clipboard alsa-utils libnotify ydotool)
   run_install sudo pacman -Sy --noconfirm --needed "${main_pkgs[@]}"
-
-  if pacman -Q whisper.cpp 2>/dev/null || pacman -Q whisper-cpp 2>/dev/null; then
-    echo "Whisper (whisper.cpp or whisper-cpp) already installed."
-  else
-    if command -v paru >/dev/null 2>&1; then
-      run_install paru -Sy --noconfirm --needed whisper.cpp
-    elif command -v yay >/dev/null 2>&1; then
-      run_install yay -Sy --noconfirm --needed whisper.cpp
-    else
-      echo "Install whisper.cpp from AUR (e.g. paru -S whisper.cpp or yay -S whisper.cpp)."
-    fi
-  fi
 }
 
 install_suse() {
-  # openSUSE: same package names as Fedora for these
+  # openSUSE: same helper package names as Fedora for these
   local pkgs=(wl-clipboard alsa-utils libnotify ydotool)
   run_install sudo zypper install -y "${pkgs[@]}"
-  # whisper.cpp / whisper-cpp may not be in default repos
-  if zypper search whisper 2>/dev/null | grep -q -i whisper; then
-    run_install sudo zypper install -y whisper-cpp 2>/dev/null || run_install sudo zypper install -y whisper.cpp 2>/dev/null || true
-  else
-    echo "Whisper may not be in openSUSE repos; consider building from source or adding a repo."
-  fi
+  echo "For whisper.cpp on openSUSE, prefer building from source as described in the README."
 }
 
 install_void() {
-  # Void Linux: xbps-install, package names mostly match Fedora/Debian
+  # Void Linux: xbps-install, helper package names mostly match Fedora/Debian
   local pkgs=(alsa-utils libnotify ydotool)
   run_install sudo xbps-install -Sy "${pkgs[@]}"
 
@@ -145,7 +132,7 @@ install_void() {
     echo "wl-clipboard not found in Void repos (or xbps-query missing); install manually if you need Wayland clipboard support."
   fi
 
-  echo "For Whisper on Void, you may need to build whisper.cpp from source or use a container/toolbox."
+  echo "For whisper.cpp on Void, prefer building from source as described in the README."
 }
 
 install_alpine() {
@@ -161,7 +148,7 @@ install_alpine() {
     echo "On Alpine, ydotool is not packaged; consider installing dotool or building ydotool from source."
   fi
 
-  echo "Whisper.cpp is not in Alpine's main repos as of now; build from source or use a container if needed."
+  echo "whisper.cpp is not in Alpine's main repos as of now; build from source as described in the README or use a container if needed."
 }
 
 install_gentoo() {
@@ -169,16 +156,15 @@ install_gentoo() {
   local pkgs=(gui-apps/wl-clipboard media-sound/alsa-utils x11-libs/libnotify x11-misc/ydotool)
   run_install sudo emerge --ask=n --verbose "${pkgs[@]}"
 
-  echo "For Whisper on Gentoo, you can use app-accessibility/whisper-cpp from the GURU overlay (not installed automatically here)."
+  echo "For whisper.cpp on Gentoo, prefer building from source as described in the README (or use app-accessibility/whisper-cpp from GURU if you really want a package)."
 }
 
 install_nixos() {
   echo "Detected NixOS. System packages are normally managed declaratively."
   echo ""
-  echo "Add something like this to your configuration.nix:"
+  echo "Add something like this to your configuration.nix for the helper tools (whisper.cpp itself is better built from source in your home):"
   cat <<'EOF'
   environment.systemPackages = with pkgs; [
-    openai-whisper-cpp
     wl-clipboard
     alsa-utils
     libnotify
@@ -218,6 +204,20 @@ case "$FAMILY" in
     fi
     ;;
 esac
+
+if ! command -v whisper-cli >/dev/null 2>&1 && ! command -v whisper-cpp >/dev/null 2>&1; then
+  echo ""
+  echo "NOTE: 'whisper-cli' was not found in your PATH. VoxTyper will not work until whisper.cpp is installed."
+  echo "The recommended way (all distros) is to build from source:"
+  echo "  git clone https://github.com/ggerganov/whisper.cpp.git"
+  echo "  cd whisper.cpp"
+  echo "  cmake -B build -DCMAKE_BUILD_TYPE=Release"
+  echo "  cmake --build build -j\$(nproc)"
+  echo "  mkdir -p \$HOME/.local/bin"
+  echo "  cp build/bin/whisper-cli \$HOME/.local/bin/whisper-cli"
+  echo ""
+  echo "After that, re-run voxtyper or your keybinding."
+fi
 
 if [[ "$INSTALL_SCRIPT" -eq 1 ]]; then
   INSTALLER_DIR="$(dirname "$(realpath "$0" 2>/dev/null || echo "$0")")"

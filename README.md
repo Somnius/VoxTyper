@@ -2,7 +2,7 @@
 
 **Offline push-to-talk voice dictation for Linux** — no cloud, no account. Speak, then have the text typed into the focused window or copied to the clipboard.
 
-- **Version:** 0.2.2 ([Semantic Versioning](https://semver.org/))
+- **Version:** 0.3.0 ([Semantic Versioning](https://semver.org/))
 - **Supported:** Fedora/Nobara/RHEL family, Debian/Ubuntu and derivatives (incl. PikaOS, Mint, Pop!_OS, etc.), Arch-based (Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy, etc.), openSUSE, Void, Alpine, Gentoo, and NixOS (via installer logic; see below).
 
 ## Features
@@ -14,7 +14,9 @@
 
 ## Requirements
 
-- `whisper.cpp` (or distro package: `whisper-cpp` / `whisper.cpp`)
+- `whisper.cpp` built from source (recommended)
+  - We strongly discourage using distro `whisper-cpp` / `whisper.cpp` packages: on some distros they can pull in many gigabytes of GPU / GIS dependencies (CUDA, ROCm, OpenVINO, proj-data-*, etc.) or even downgrade your ROCm stack.
+  - Instead, build `whisper-cli` from the official repository (see Quick start step 2).
 - `wl-clipboard` (Wayland clipboard)
 - `alsa-utils` (for `arecord`)
 - `libnotify` or `libnotify-bin` (notifications)
@@ -22,14 +24,14 @@
 
 ## Quick start
 
-1. **Install dependencies** (from project root):
+1. **Install helper dependencies** (from project root):
 
    ```bash
    chmod +x install-voxtyper.sh
    ./install-voxtyper.sh
    ```
 
-   This reads `/etc/os-release` (using `ID` and `ID_LIKE`) to detect your distro and install the right packages, and falls back to the available package manager (`dnf` / `apt` / `pacman` / `zypper`) if it sees an unknown ID.
+   This reads `/etc/os-release` (using `ID` and `ID_LIKE`) to detect your distro and install the right helper packages, and falls back to the available package manager (`dnf` / `apt` / `pacman` / `zypper`) if it sees an unknown ID.
    It knows about:
 
    - **Fedora / Nobara / RHEL family**
@@ -43,7 +45,24 @@
 
    Use `--no-script` to only install packages (skip copying `voxtyper.sh` to `~/.local/bin/voxtyper`), or `--dry-run` to see what would run without making changes.
 
-2. **Download a Whisper model** (e.g. multilingual base):
+2. **Install whisper.cpp from source (recommended)**  
+   This avoids distro `whisper-cpp` packages pulling in huge GPU/GIS stacks.
+
+   ```bash
+   cd ~/dev              # or wherever you keep source
+   git clone https://github.com/ggerganov/whisper.cpp.git
+   cd whisper.cpp
+
+   cmake -B build -DCMAKE_BUILD_TYPE=Release
+   cmake --build build -j"$(nproc)"
+
+   mkdir -p ~/.local/bin
+   cp build/bin/whisper-cli ~/.local/bin/whisper-cli
+   ```
+
+   After this, `whisper-cli --help` should work and `voxtyper.sh` will be able to find it.
+
+3. **Download a Whisper model** (e.g. multilingual base):
 
    ```bash
    mkdir -p ~/.local/share/whisper
@@ -51,13 +70,13 @@
    wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
    ```
 
-3. **Enable `ydotoold`** (for typing into the active window):
+4. **Enable `ydotoold`** (for typing into the active window):
 
    ```bash
    sudo systemctl enable --now ydotoold.service
    ```
 
-4. **Bind a shortcut** to `~/.local/bin/voxtyper` (e.g. Meta+X in KDE Shortcuts or your compositor config).
+5. **Bind a shortcut** to `~/.local/bin/voxtyper` (e.g. Meta+X in KDE Shortcuts or your compositor config).
 
 See [`docs/VOXTYPE_NOBARA.md`](docs/VOXTYPE_NOBARA.md) for a detailed guide (Nobara/KDE and other distros).
 
@@ -66,6 +85,7 @@ See [`docs/VOXTYPE_NOBARA.md`](docs/VOXTYPE_NOBARA.md) for a detailed guide (Nob
 - **0.1.0** — Initial release for Arch-based distros with Hyprland (see [original thread](https://linux-user.gr/t/odhgos-gia-offline-voxtype-style-dictation-se-arch-hyprland/6142)).
 - **0.2.0** — VoxTyper initial public repo release (Nobara/KDE focus).
 - **0.2.2** — Extended multi-distro installer (`install-voxtyper.sh`), smarter `/etc/os-release` detection (PikaOS, CachyOS, Omarchy, etc.), and moved the detailed Nobara/KDE guide to `docs/VOXTYPE_NOBARA.md`.
+- **0.3.0** — Stop auto-installing distro `whisper-cpp` packages; recommend building whisper.cpp from source instead; update installer messaging and docs accordingly.
 
 ## Credits and inspiration
 
