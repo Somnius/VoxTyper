@@ -3,7 +3,7 @@
 **Offline push-to-talk voice dictation for Linux** — no cloud, no account. Speak, then have the text typed into the focused window or copied to the clipboard.
 
 - **Version:** 0.2.0 ([Semantic Versioning](https://semver.org/))
-- **Supported:** Fedora/Nobara, Debian/Ubuntu, Arch, openSUSE (Wayland-friendly; works with KDE, Hyprland, and others where `ydotool` is available)
+- **Supported:** Fedora/Nobara/RHEL family, Debian/Ubuntu and derivatives (incl. PikaOS, Mint, Pop!_OS, etc.), Arch-based (Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy, etc.), openSUSE, Void, Alpine, Gentoo, and NixOS (via installer logic; see below).
 
 ## Features
 
@@ -29,7 +29,19 @@
    ./install-voxtyper.sh
    ```
 
-   This detects your distro and installs the right packages. Use `--no-script` to only install packages; use `--dry-run` to see what would run.
+   This reads `/etc/os-release` (using `ID` and `ID_LIKE`) to detect your distro and install the right packages, and falls back to the available package manager (`dnf` / `apt` / `pacman` / `zypper`) if it sees an unknown ID.
+   It knows about:
+
+   - **Fedora / Nobara / RHEL family**
+   - **Debian / Ubuntu and derivatives** (incl. PikaOS, Linux Mint, Pop!_OS, etc.)
+   - **Arch-based** (Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy, etc.)
+   - **openSUSE** (Tumbleweed, Leap, MicroOS)
+   - **Void Linux**
+   - **Alpine Linux** (uses `dotool` as an optional `ydotool` alternative)
+   - **Gentoo**
+   - **NixOS** (prints a `configuration.nix` snippet instead of trying to install packages directly)
+
+   Use `--no-script` to only install packages (skip copying `voxtyper.sh` to `~/.local/bin/voxtyper`), or `--dry-run` to see what would run without making changes.
 
 2. **Download a Whisper model** (e.g. multilingual base):
 
