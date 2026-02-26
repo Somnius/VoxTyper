@@ -1,0 +1,6 @@
+# Notes (LaTeX style / scratch)
+*.sty
+
+# Markdown docs (keep only README for repo)
+*.md
+!README.md
