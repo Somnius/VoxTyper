@@ -2,7 +2,7 @@
 
 **Offline push-to-talk voice dictation for Linux** — no cloud, no account. Speak, then have the text typed into the focused window or copied to the clipboard.
 
-- **Version:** 0.2.0 ([Semantic Versioning](https://semver.org/))
+- **Version:** 0.2.2 ([Semantic Versioning](https://semver.org/))
 - **Supported:** Fedora/Nobara/RHEL family, Debian/Ubuntu and derivatives (incl. PikaOS, Mint, Pop!_OS, etc.), Arch-based (Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy, etc.), openSUSE, Void, Alpine, Gentoo, and NixOS (via installer logic; see below).
 
 ## Features
@@ -59,12 +59,13 @@
 
 4. **Bind a shortcut** to `~/.local/bin/voxtyper` (e.g. Meta+X in KDE Shortcuts or your compositor config).
 
-See [VOXTYPE_NOBARA.md](VOXTYPE_NOBARA.md) for a detailed guide (Nobara/KDE and other distros).
+See [`docs/VOXTYPE_NOBARA.md`](docs/VOXTYPE_NOBARA.md) for a detailed guide (Nobara/KDE and other distros).
 
 ## Version history
 
 - **0.1.0** — Initial release for Arch-based distros with Hyprland (see [original thread](https://linux-user.gr/t/odhgos-gia-offline-voxtype-style-dictation-se-arch-hyprland/6142)).
-- **0.2.0** — Multi-distro installer, `voxtyper.sh` and `install-voxtyper.sh`; support for Fedora/Nobara, Debian/Ubuntu, Arch, openSUSE; KDE/Wayland focus.
+- **0.2.0** — VoxTyper initial public repo release (Nobara/KDE focus).
+- **0.2.2** — Extended multi-distro installer (`install-voxtyper.sh`), smarter `/etc/os-release` detection (PikaOS, CachyOS, Omarchy, etc.), and moved the detailed Nobara/KDE guide to `docs/VOXTYPE_NOBARA.md`.
 
 ## Credits and inspiration
 
