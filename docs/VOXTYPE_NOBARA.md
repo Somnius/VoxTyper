@@ -43,6 +43,7 @@ Options:
 
 - `./install-voxtyper.sh --no-script` — install packages only, do not copy `voxtyper.sh` to `~/.local/bin/voxtyper`
 - `./install-voxtyper.sh --dry-run` — print what would be run, without installing
+- `./install-voxtyper.sh --build-whisper` — after installing helper packages, try to clone/build `whisper.cpp` from source and place `whisper-cli` into `~/.local/bin` (requires `git`, `cmake`, `make`, `g++`)
 
 ### Option B: Manual install (Nobara / Fedora)
 

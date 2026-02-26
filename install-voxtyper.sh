@@ -19,12 +19,14 @@ set -e
 
 DRY_RUN=
 INSTALL_SCRIPT=1
+BUILD_WHISPER=0
 SCRIPT_NAME="voxtyper.sh"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --no-script) INSTALL_SCRIPT=0 ;;
-    --dry-run)   DRY_RUN=1 ;;
+    --no-script)      INSTALL_SCRIPT=0 ;;
+    --dry-run)        DRY_RUN=1 ;;
+    --build-whisper)  BUILD_WHISPER=1 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
   shift
@@ -86,6 +88,56 @@ run_install() {
     return 0
   fi
   "$@"
+}
+
+build_whisper_from_source() {
+  echo ""
+  echo "Attempting to build whisper.cpp from source into \$HOME/.local/bin/whisper-cli ..."
+
+  if [[ -n "$DRY_RUN" ]]; then
+    echo "[dry-run] Would clone/build https://github.com/ggerganov/whisper.cpp and copy build/bin/whisper-cli to \$HOME/.local/bin/whisper-cli"
+    return 0
+  fi
+
+  if command -v whisper-cli >/dev/null 2>&1; then
+    echo "whisper-cli already present in PATH; skipping build."
+    return 0
+  fi
+
+  local missing=0
+  for tool in git cmake make g++; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      echo "Missing required build tool '$tool'. Please install it (via your package manager) and rerun with --build-whisper."
+      missing=1
+    fi
+  done
+
+  if (( missing )); then
+    echo "Cannot auto-build whisper.cpp until the above tools are installed."
+    return 1
+  fi
+
+  local src_dir="${WHISPER_SRC_DIR:-$HOME/dev/whisper.cpp}"
+  local parent_dir
+  parent_dir="$(dirname "$src_dir")"
+  mkdir -p "$parent_dir"
+
+  if [[ ! -d "$src_dir/.git" ]]; then
+    echo "Cloning whisper.cpp into $src_dir ..."
+    git clone https://github.com/ggerganov/whisper.cpp.git "$src_dir"
+  else
+    echo "Using existing whisper.cpp checkout at $src_dir"
+  fi
+
+  echo "Configuring and building whisper.cpp ..."
+  cd "$src_dir"
+  cmake -B build -DCMAKE_BUILD_TYPE=Release
+  cmake --build build -j"$(nproc)"
+
+  echo "Installing whisper-cli into \$HOME/.local/bin ..."
+  mkdir -p "$HOME/.local/bin"
+  cp build/bin/whisper-cli "$HOME/.local/bin/whisper-cli"
+  echo "whisper-cli is now available at $HOME/.local/bin/whisper-cli"
 }
 
 install_fedora() {
@@ -205,6 +257,10 @@ case "$FAMILY" in
     ;;
 esac
 
+if [[ "$BUILD_WHISPER" -eq 1 ]]; then
+  build_whisper_from_source
+fi
+
 if ! command -v whisper-cli >/dev/null 2>&1 && ! command -v whisper-cpp >/dev/null 2>&1; then
   echo ""
   echo "NOTE: 'whisper-cli' was not found in your PATH. VoxTyper will not work until whisper.cpp is installed."
@@ -216,7 +272,8 @@ if ! command -v whisper-cli >/dev/null 2>&1 && ! command -v whisper-cpp >/dev/nu
   echo "  mkdir -p \$HOME/.local/bin"
   echo "  cp build/bin/whisper-cli \$HOME/.local/bin/whisper-cli"
   echo ""
-  echo "After that, re-run voxtyper or your keybinding."
+  echo "You can let this installer attempt the same steps automatically by passing --build-whisper."
+  echo "After building, re-run voxtyper or your keybinding."
 fi
 
 if [[ "$INSTALL_SCRIPT" -eq 1 ]]; then

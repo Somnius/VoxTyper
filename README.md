@@ -2,7 +2,7 @@
 
 **Offline push-to-talk voice dictation for Linux** — no cloud, no account. Speak, then have the text typed into the focused window or copied to the clipboard.
 
-- **Version:** 0.3.0 ([Semantic Versioning](https://semver.org/))
+- **Version:** 0.3.1 ([Semantic Versioning](https://semver.org/))
 - **Supported:** Fedora/Nobara/RHEL family, Debian/Ubuntu and derivatives (incl. PikaOS, Mint, Pop!_OS, etc.), Arch-based (Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy, etc.), openSUSE, Void, Alpine, Gentoo, and NixOS (via installer logic; see below).
 
 ## Features
@@ -43,7 +43,8 @@
    - **Gentoo**
    - **NixOS** (prints a `configuration.nix` snippet instead of trying to install packages directly)
 
-   Use `--no-script` to only install packages (skip copying `voxtyper.sh` to `~/.local/bin/voxtyper`), or `--dry-run` to see what would run without making changes.
+   Use `--no-script` to only install packages (skip copying `voxtyper.sh` to `~/.local/bin/voxtyper`), or `--dry-run` to see what would run without making changes.  
+   You can also pass `--build-whisper` to let the installer try to clone and build `whisper.cpp` from source for you (using the same steps as below), if `git`/`cmake`/`make`/`g++` are available.
 
 2. **Install whisper.cpp from source (recommended)**  
    This avoids distro `whisper-cpp` packages pulling in huge GPU/GIS stacks.
@@ -86,6 +87,7 @@ See [`docs/VOXTYPE_NOBARA.md`](docs/VOXTYPE_NOBARA.md) for a detailed guide (Nob
 - **0.2.0** — VoxTyper initial public repo release (Nobara/KDE focus).
 - **0.2.2** — Extended multi-distro installer (`install-voxtyper.sh`), smarter `/etc/os-release` detection (PikaOS, CachyOS, Omarchy, etc.), and moved the detailed Nobara/KDE guide to `docs/VOXTYPE_NOBARA.md`.
 - **0.3.0** — Stop auto-installing distro `whisper-cpp` packages; recommend building whisper.cpp from source instead; update installer messaging and docs accordingly.
+- **0.3.1** — Add optional `--build-whisper` flag to the installer to clone/build whisper.cpp from source automatically when requested.
 
 ## Credits and inspiration
 
