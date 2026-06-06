@@ -2,25 +2,26 @@
 
 **Offline push-to-talk voice dictation for Linux** — no cloud, no account. Speak, then have the text typed into the focused window or copied to the clipboard.
 
-- **Version:** 0.3.1 ([Semantic Versioning](https://semver.org/))
-- **Supported:** Fedora/Nobara/RHEL family, Debian/Ubuntu and derivatives (incl. PikaOS, Mint, Pop!_OS, etc.), Arch-based (Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy, etc.), openSUSE, Void, Alpine, Gentoo, and NixOS (via installer logic; see below).
+- **Version:** 0.4.0 ([Semantic Versioning](https://semver.org/))
+- **Supported:** Fedora/Nobara/RHEL family, Debian/Ubuntu and derivatives (incl. PikaOS, Mint, Pop!_OS, etc.), Arch-based (Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy, etc.), openSUSE, Void, Alpine, Gentoo, NixOS, and **Guix System** (via manual setup; see below).
 
 ## Features
 
 - Push-to-talk: one shortcut to start recording, same shortcut again to stop and transcribe
 - Fully offline: [whisper.cpp](https://github.com/ggerganov/whisper.cpp) runs locally
 - Multilingual: default model uses `--language auto` (e.g. English and Greek)
-- Optional: type into focused window via `ydotool`, or just paste from clipboard
+- **X11 & Wayland**: auto-detects available clipboard/typing tools (`xclip`/`xdotool` on X11, `wl-copy`/`ydotool` on Wayland)
+- Desktop-shortcut safe: script sets its own `PATH` so it works from any launcher (XFCE, KDE, Hyprland, etc.)
 
 ## Requirements
 
 - `whisper.cpp` built from source (recommended)
   - We strongly discourage using distro `whisper-cpp` / `whisper.cpp` packages: on some distros they can pull in many gigabytes of GPU / GIS dependencies (CUDA, ROCm, OpenVINO, proj-data-*, etc.) or even downgrade your ROCm stack.
   - Instead, build `whisper-cli` from the official repository (see Quick start step 2).
-- `wl-clipboard` (Wayland clipboard)
+- Clipboard tool: `xclip` (X11) or `wl-clipboard` (Wayland)
 - `alsa-utils` (for `arecord`)
 - `libnotify` or `libnotify-bin` (notifications)
-- `ydotool` (for typing into the active window; optional if you only use clipboard)
+- Typing tool: `xdotool` (X11) or `ydotool` (Wayland); optional if you only use clipboard
 
 ## Quick start
 
@@ -46,6 +47,12 @@
    Use `--no-script` to only install packages (skip copying `voxtyper.sh` to `~/.local/bin/voxtyper`), or `--dry-run` to see what would run without making changes.  
    You can also pass `--build-whisper` to let the installer try to clone and build `whisper.cpp` from source for you (using the same steps as below), if `git`/`cmake`/`make`/`g++` are available.
 
+   > **Guix System**: Skip the installer. Declare the following packages in `~/.config/guix/home.scm` and run `guix home reconfigure`:
+   > ```
+   > "alsa-utils" "alsa-plugins:pulseaudio" "xclip" "xdotool"
+   > ```
+   > `libnotify` is provided by `%desktop-services`; if missing, add it too.
+
 2. **Install whisper.cpp from source (recommended)**  
    This avoids distro `whisper-cpp` packages pulling in huge GPU/GIS stacks.
 
@@ -63,6 +70,17 @@
 
    After this, `whisper-cli --help` should work and `voxtyper.sh` will be able to find it.
 
+   > **Guix System**: Build inside a `guix shell` to link against Guix's glibc instead of the host toolchain:
+   > ```bash
+   > guix shell gcc-toolchain cmake make -- bash -c "
+   >   cd ~/dev/whisper.cpp && \
+   >   rm -rf build && \
+   >   cmake -B build -DCMAKE_BUILD_TYPE=Release && \
+   >   cmake --build build -j\$(nproc) && \
+   >   cp build/bin/whisper-cli ~/.local/bin/whisper-cli
+   > "
+   > ```
+
 3. **Download a Whisper model** (e.g. multilingual base):
 
    ```bash
@@ -71,15 +89,35 @@
    wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
    ```
 
-4. **Enable `ydotoold`** (for typing into the active window):
-
+   If `wget` fails with a certificate error on Guix, use `curl` with the system CA bundle:
    ```bash
-   sudo systemctl enable --now ydotoold.service
+   curl --cacert /etc/ssl/certs/ca-certificates.crt \
+     -L -o ~/.local/share/whisper/ggml-base.bin \
+     https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
    ```
 
-5. **Bind a shortcut** to `~/.local/bin/voxtyper` (e.g. Meta+X in KDE Shortcuts or your compositor config).
+4. **Bind a shortcut** to `~/.local/bin/voxtyper` (e.g. `Super+V` in XFCE, `Meta+X` in KDE, or your compositor config).  
+   Press once to start recording, press again to stop and transcribe.
 
-See [`docs/VOXTYPE_NOBARA.md`](docs/VOXTYPE_NOBARA.md) for a detailed guide (Nobara/KDE and other distros).
+   The script is self-contained and sets its own `PATH`, so it works from any desktop-environment shortcut without requiring a login shell.
+
+## How it works
+
+- **First keypress** — Shows a notification *"Now listening for VoxTyper"* and starts `arecord` in the background (mono, WAV).
+- **Second keypress** — Stops recording, shows *"Stopped VoxTyper — transcribing..."*, runs `whisper-cli` with `--language auto`, then:
+  1. Copies the transcribed text to the clipboard
+  2. Types it into the active window with `xdotool` (X11) or `ydotool` (Wayland)
+
+Temporary files in `/tmp` are cleaned up after each cycle.
+
+## Quick test
+
+```bash
+whisper-cli --help | head -3           # check whisper works
+arecord -f cd -c 1 -t wav /tmp/t.wav -d 3   # record 3s
+whisper-cli -m ~/.local/share/whisper/ggml-base.bin -f /tmp/t.wav -otxt -of /tmp/t
+cat /tmp/t.txt                                # see transcription
+```
 
 ## Version history
 
@@ -88,6 +126,7 @@ See [`docs/VOXTYPE_NOBARA.md`](docs/VOXTYPE_NOBARA.md) for a detailed guide (Nob
 - **0.2.2** — Extended multi-distro installer (`install-voxtyper.sh`), smarter `/etc/os-release` detection (PikaOS, CachyOS, Omarchy, etc.), and moved the detailed Nobara/KDE guide to `docs/VOXTYPE_NOBARA.md`.
 - **0.3.0** — Stop auto-installing distro `whisper-cpp` packages; recommend building whisper.cpp from source instead; update installer messaging and docs accordingly.
 - **0.3.1** — Add optional `--build-whisper` flag to the installer to clone/build whisper.cpp from source automatically when requested.
+- **0.4.0** — X11 support (`xclip`/`xdotool` as primary, Wayland fallback); Guix System setup guide; self-contained PATH for desktop shortcuts; improved notification messages.
 
 ## Credits and inspiration
 
