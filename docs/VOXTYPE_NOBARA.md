@@ -1,73 +1,37 @@
-## Offline Voxtype‑style Dictation on Nobara (KDE Plasma / Wayland)
+# VoxTyper on Nobara (KDE Plasma, Wayland)
 
-This guide adapts the Arch + Hyprland workflow from your article to **Nobara / Fedora KDE (KWin Wayland)**.
+This is the step-by-step walkthrough for Nobara and other Fedora-family distributions running KDE Plasma on Wayland. It is the same pipeline described in the main README, narrowed to the choices that matter on this stack: `dnf` for packages, `wl-copy` for the clipboard, `ydotool` for typing, and a KDE Custom Shortcut to fire the script.
 
-It gives you:
+The main README in the repo root covers the cross-distro story; this file is intentionally Nobara-centric.
 
-- **Push‑to‑talk dictation** using `whisper.cpp` (via `whisper-cli`)
-- **Offline transcription** with the multilingual `ggml-base.bin` model (`--language auto`)
-- **Automatic paste** into the active window via `ydotool` (if configured)
-- **Clipboard copy** fallback so you can always `Ctrl+V` the result
+## 1. Helper packages
 
-The repo also contains a ready script at the project root: `voxtyper.sh`, and an **installer** that detects your distro and installs the right packages: `install-voxtyper.sh`.
-
----
-
-## 1. Install Required Packages
-
-### Option A: Use the installer script (any supported distro)
-
-From the project root:
+You can either let the installer do it for you (it detects Nobara via `ID_LIKE=fedora` and uses `dnf`):
 
 ```bash
 chmod +x install-voxtyper.sh
 ./install-voxtyper.sh
 ```
 
-This detects your distribution by reading `/etc/os-release` (using `ID` and `ID_LIKE`) and then installs the **helper packages only** (clipboard, audio, notifications, ydotool).  
-It deliberately does **not** install `whisper-cpp` from your distro repos to avoid pulling in huge GPU / GIS stacks.
-If it does not recognize your `ID`, it will try to guess a family from the available package manager (`dnf`, `apt`, `pacman`, `zypper`) instead.
-
-Supported families out of the box include (examples, not exhaustive):
-
-- **Fedora / Nobara / RHEL family**: `wl-clipboard`, `alsa-utils`, `libnotify`, `ydotool`
-- **Debian / Ubuntu and derivatives** (incl. PikaOS, Linux Mint, Pop!_OS, etc.): `wl-clipboard`, `alsa-utils`, `libnotify-bin`, `ydotool`
-- **Arch-based** (Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy, etc.): `wl-clipboard`, `alsa-utils`, `libnotify`, `ydotool`
-- **openSUSE** (Tumbleweed, Leap, MicroOS): `wl-clipboard`, `alsa-utils`, `libnotify`, `ydotool`
-- **Void Linux**: `alsa-utils`, `libnotify`, `ydotool`, and optionally `wl-clipboard` if present in the repo
-- **Alpine Linux**: `wl-clipboard`, `alsa-utils`, `libnotify`, and optionally `dotool` as a rough `ydotool` alternative
-- **Gentoo**: `gui-apps/wl-clipboard`, `media-sound/alsa-utils`, `x11-libs/libnotify`, `x11-misc/ydotool`
-- **NixOS**: prints a `configuration.nix` snippet with `wl-clipboard`, `alsa-utils`, `libnotify`, `ydotool` instead of installing packages directly
-
-Options:
-
-- `./install-voxtyper.sh --no-script` — install packages only, do not copy `voxtyper.sh` to `~/.local/bin/voxtyper`
-- `./install-voxtyper.sh --dry-run` — print what would be run, without installing
-- `./install-voxtyper.sh --build-whisper` — after installing helper packages, try to clone/build `whisper.cpp` from source and place `whisper-cli` into `~/.local/bin` (requires `git`, `cmake`, `make`, `g++`)
-
-### Option B: Manual install (Nobara / Fedora)
-
-On Nobara / Fedora, you can install the helper tools yourself:
+Or install the same packages by hand:
 
 ```bash
 sudo dnf install wl-clipboard alsa-utils libnotify ydotool
 ```
 
-- **wl-clipboard**: `wl-copy` / `wl-paste` for Wayland clipboard
-- **alsa-utils**: `arecord` for capturing microphone audio
-- **libnotify**: `notify-send` desktop notifications
-- **ydotool**: Xdotool‑style typing on Wayland using `/dev/uinput`
+What each one is for:
 
-> If your Whisper binary isn’t named `whisper-cli`, you can override it later via the `WHISPER_BIN` environment variable in the script.
+- `wl-clipboard` provides `wl-copy` and `wl-paste`. The script uses `wl-copy` on Wayland sessions.
+- `alsa-utils` provides `arecord`, which captures the microphone to a WAV file.
+- `libnotify` provides `notify-send`, used for the two on-screen notifications.
+- `ydotool` is the Wayland equivalent of `xdotool`. It needs `/dev/uinput` and the `ydotoold` daemon to work.
 
----
+The installer does not install `whisper-cpp` from the Fedora repositories. The Fedora package brings in a sizeable ROCm/CUDA dependency chain and on machines that already have a ROCm install it has been seen to downgrade parts of that stack. Building `whisper.cpp` yourself is much smaller and side-effect free.
 
-## 2. Install whisper.cpp (from source, recommended)
-
-To avoid distro `whisper-cpp` packages pulling in huge GPU / GIS stacks (CUDA/ROCm/OpenVINO/proj-data-*, etc.), build `whisper-cli` from source:
+## 2. Build whisper.cpp
 
 ```bash
-cd ~/dev              # or wherever you keep source
+cd ~/dev   # or wherever you keep source trees
 git clone https://github.com/ggerganov/whisper.cpp.git
 cd whisper.cpp
 
@@ -78,13 +42,13 @@ mkdir -p ~/.local/bin
 cp build/bin/whisper-cli ~/.local/bin/whisper-cli
 ```
 
-After this, `whisper-cli --help` should work and `voxtyper.sh` will be able to find it.
+After this, `whisper-cli --help` should print usage and `voxtyper.sh` will find it through `PATH`.
 
----
+If you would rather have the installer do this for you, run `./install-voxtyper.sh --build-whisper`. It runs the same commands and requires `git`, `cmake`, `make`, and `g++` to be installed first.
 
-## 3. Download the Whisper Model
+## 3. Whisper model
 
-Use the **multilingual** base model (works with `--language auto`):
+The default model in the script is the multilingual base, which is a good balance between accuracy and speed for dictation:
 
 ```bash
 mkdir -p ~/.local/share/whisper
@@ -92,40 +56,21 @@ cd ~/.local/share/whisper
 wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
 ```
 
-This is roughly equivalent to your article’s second post but uses the language‑agnostic model so both English and Greek work.
+If your CPU has the headroom and you want better word accuracy, swap to `ggml-small.bin`, `ggml-medium.bin`, or `ggml-large.bin`, drop it in the same folder, and edit the `MODEL=` line in `voxtyper.sh` to point at the new filename.
 
-If you have a **stronger CPU/GPU** and want better accuracy (slower but higher quality), you can also download a larger model, for example:
+## 4. Enable ydotoold
 
-- `ggml-small.bin`
-- `ggml-medium.bin`
-- `ggml-large.bin`
-
-After downloading a bigger model into the same folder, update the `MODEL=` line in the script to point to it (e.g. `ggml-small.bin` instead of `ggml-base.bin`).
-
----
-
-## 3. Enable `ydotoold` (Optional but Recommended)
-
-`ydotool` requires the `ydotoold` daemon to be running and to have access to `/dev/uinput`.  
-Enable it as a system service:
+`ydotool` needs the `ydotoold` daemon running and able to open `/dev/uinput`. Enable it once:
 
 ```bash
 sudo systemctl enable --now ydotoold.service
 ```
 
-If `ydotoold` is not running, the script will still:
+If the daemon is not running, transcription still works and the text is still copied to the clipboard. You just have to paste it manually with `Ctrl+V` instead of having it appear in the focused field.
 
-- Record and transcribe
-- Copy the result to the clipboard via `wl-copy`
+## 5. Install the script
 
-But it **won’t type directly** into the active window; you’ll paste manually with `Ctrl+V`.
-
----
-
-## 4. Script: `voxtyper.sh`
-
-This repo contains the script at the project root: `voxtyper.sh`.  
-To install it as `~/.local/bin/voxtyper` (as in your original guide):
+If you ran `./install-voxtyper.sh` without `--no-script`, the script is already at `~/.local/bin/voxtyper`. Otherwise:
 
 ```bash
 mkdir -p ~/.local/bin
@@ -133,80 +78,59 @@ cp ./voxtyper.sh ~/.local/bin/voxtyper
 chmod +x ~/.local/bin/voxtyper
 ```
 
-(The installer script does this automatically unless you pass `--no-script`.)
+If your Whisper binary is named something other than `whisper-cli`, either change the `WHISPER_BIN` line inside the script, or invoke it with `WHISPER_BIN=your-binary voxtyper` while testing.
 
-If your Whisper executable is not `whisper-cli`, either:
+## 6. Bind a shortcut in KDE Plasma
 
-- Edit the `WHISPER_BIN` line in the script, **or**
-- Run it with `WHISPER_BIN=your-binary-name voxtyper` for testing, then bake that into the script.
+1. Open `System Settings` -> `Shortcuts` -> `Custom Shortcuts`.
+2. Add a new entry of type `Command/URL`. Name it `VoxTyper`.
+3. Set the trigger to the key combination you want, for example `Meta + X`.
+4. Set the command to `~/.local/bin/voxtyper`.
+5. Apply.
 
----
+Press the shortcut once to start recording. Press it again to stop, transcribe, and have the text appear in whatever window is focused.
 
-## 5. KDE Plasma Global Shortcut
+## 7. Behavior in detail
 
-In KDE Plasma (Wayland):
+- First press
+  - `notify-send` shows "Now listening for VoxTyper".
+  - `arecord -f cd -c 1 -t wav /tmp/whisper-record.wav` starts in the background. `cd` means 16-bit, 44.1 kHz; `-c 1` is mono.
+- Second press
+  - `pkill -INT arecord` stops the recorder cleanly so the WAV header is finalised.
+  - `notify-send` shows "Stopped VoxTyper — transcribing...".
+  - `whisper-cli -m ~/.local/share/whisper/ggml-base.bin -f /tmp/whisper-record.wav -otxt -of /tmp/whisper-output --language auto` runs. Output goes to `/tmp/whisper-output.txt`.
+  - The text file is collapsed to a single line, copied to the clipboard, and typed into the active window.
+  - `/tmp/whisper-record.wav` and `/tmp/whisper-output.txt` are deleted.
 
-1. Open **System Settings → Shortcuts → Custom Shortcuts**.
-2. Add a new **Command/URL** action, name it e.g. **VoxTyper Dictation**.
-3. Set the **trigger** you like (e.g. `Meta + X`).
-4. Set the **command** to:
+The script tries `xclip` before `wl-copy`, and `xdotool` before `ydotool`. On a pure Wayland Plasma session only the second tool in each pair will be present, so those are the ones that run.
 
-   ```bash
-   ~/.local/bin/voxtyper
-   ```
+## 8. Quick test checklist
 
-5. Apply the changes.
+Run these one at a time and confirm each works before relying on the shortcut.
 
----
+```bash
+# Microphone
+arecord -f cd -c 1 -t wav /tmp/test.wav -d 3
+aplay /tmp/test.wav
 
-## 6. How It Works (Behavior)
+# Whisper
+whisper-cli -m ~/.local/share/whisper/ggml-base.bin -f /tmp/test.wav -otxt -of /tmp/test
+cat /tmp/test.txt
 
-- **First keypress** (e.g. `Meta + X`):
-  - Shows a notification “Recording…”
-  - Starts `arecord` in the background, mono (`-c 1`), saving to `/tmp/whisper-record.wav`
+# Clipboard
+echo "clipboard test" | wl-copy
+wl-paste
 
-- **Second keypress**:
-  - Stops `arecord` via `pkill -INT arecord`
-  - Shows “Processing…” notification
-  - Runs `whisper-cli` with:
-    - Model: `~/.local/share/whisper/ggml-base.bin`
-    - Input: `/tmp/whisper-record.wav`
-    - Output: `/tmp/whisper-output.txt`
-    - `--language auto` (auto‑detect language)
-  - Normalises whitespace and:
-    - Copies the text to Wayland clipboard via `wl-copy`
-    - If `ydotool` is available and `ydotoold` is running, types the text into the active window with `ydotool type`
+# ydotool (with a text field focused)
+systemctl status ydotoold.service
+ydotool type 'hello from ydotool'
+```
 
-Temporary files in `/tmp` are cleaned up at the end of the cycle.
+If all four pass, the Custom Shortcut should produce the same result end to end.
 
----
+## 9. Troubleshooting
 
-## 7. Quick Test Checklist
-
-1. **Microphone**:
-   ```bash
-   arecord -f cd -c 1 -t wav /tmp/test.wav
-   aplay /tmp/test.wav
-   ```
-2. **Whisper CLI**:
-   ```bash
-   whisper-cli -m ~/.local/share/whisper/ggml-base.bin -f /tmp/test.wav -otxt -of /tmp/test
-   cat /tmp/test.txt
-   ```
-3. **Clipboard**:
-   ```bash
-   echo "Clipboard test" | wl-copy
-   wl-paste
-   ```
-4. **ydotool**:
-   - Make sure:
-     ```bash
-     systemctl status ydotoold.service
-     ```
-   - With a text field focused, run:
-     ```bash
-     ydotool type 'Hello from ydotool'
-     ```
-
-If all of these work, your Voxtype‑style dictation should behave like in the original Arch + Hyprland guide but adapted to Nobara KDE.
-
+- Notification appears but no transcription. Check that `whisper-cli` is on `PATH` and that the model path in the script matches the file you downloaded.
+- Transcription works but nothing is typed. `ydotoold` is probably not running, or your user is not in a group that can open `/dev/uinput`. The clipboard copy still happens, so `Ctrl+V` should give you the text.
+- Recording starts but the second press does nothing. Make sure only one instance of `arecord` is running (`pgrep -x arecord`); the toggle relies on detecting it.
+- The script works from a terminal but not from the KDE shortcut. The script already sets its own `PATH`, but if you have placed the tools in an unusual location, prepend it to the `PATH` export at the top of `voxtyper.sh`.

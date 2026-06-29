@@ -1,137 +1,175 @@
 # VoxTyper
 
-**Offline push-to-talk voice dictation for Linux** — no cloud, no account. Speak, then have the text typed into the focused window or copied to the clipboard.
+Offline push-to-talk voice dictation for Linux. One shortcut starts recording, the same shortcut stops it, runs the audio through a local Whisper model, and writes the result into the focused window (and the clipboard as a backup).
 
-- **Version:** 0.4.0 ([Semantic Versioning](https://semver.org/))
-- **Supported:** Fedora/Nobara/RHEL family, Debian/Ubuntu and derivatives (incl. PikaOS, Mint, Pop!_OS, etc.), Arch-based (Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy, etc.), openSUSE, Void, Alpine, Gentoo, NixOS, and **Guix System** (via manual setup; see below).
+Nothing leaves the machine. There is no account, no API key, no daemon beyond what your distro already ships with.
 
-## Features
+- Version: 0.4.0
+- License: MIT (see `LICENSE`)
+- Author: Lefteris @SomniusX
 
-- Push-to-talk: one shortcut to start recording, same shortcut again to stop and transcribe
-- Fully offline: [whisper.cpp](https://github.com/ggerganov/whisper.cpp) runs locally
-- Multilingual: default model uses `--language auto` (e.g. English and Greek)
-- **X11 & Wayland**: auto-detects available clipboard/typing tools (`xclip`/`xdotool` on X11, `wl-copy`/`ydotool` on Wayland)
-- Desktop-shortcut safe: script sets its own `PATH` so it works from any launcher (XFCE, KDE, Hyprland, etc.)
+## What it does
+
+`voxtyper.sh` is a single Bash script invoked by a keybinding. It works as a toggle:
+
+1. First press. The script sees that `arecord` is not running, shows a "Now listening for VoxTyper" notification, and launches `arecord` in the background to capture mono CD-quality WAV into `/tmp/whisper-record.wav`.
+2. Second press. The script sees `arecord` running, sends it `SIGINT`, then calls `whisper-cli` against `~/.local/share/whisper/ggml-base.bin` with `--language auto`. The transcript is collapsed to a single line, copied to the clipboard, and typed into the active window. Temporary files are removed on the way out.
+
+Clipboard and typing tools are chosen at runtime. The script prefers the X11 tools (`xclip`, `xdotool`) when present and falls back to their Wayland equivalents (`wl-copy`, `ydotool`). If only one path is available, only that one is used; if neither typing tool is installed you still get the text on the clipboard.
+
+The script sets its own `PATH` (including `~/.local/bin`, Guix home, and `/run/current-system/profile/bin`) so it runs identically from a desktop-environment shortcut, a terminal, or a window-manager keybind, without needing a login shell.
+
+## What it is not
+
+- Not a continuous transcriber. Recording is bounded by your two key presses.
+- Not a model. You bring your own Whisper `.bin` file.
+- Not a wrapper around a cloud API. The pipeline is `arecord` -> `whisper-cli` -> clipboard/type.
+- Not a GUI. Configuration is done by editing the script or exporting `WHISPER_BIN`.
 
 ## Requirements
 
-- `whisper.cpp` built from source (recommended)
-  - We strongly discourage using distro `whisper-cpp` / `whisper.cpp` packages: on some distros they can pull in many gigabytes of GPU / GIS dependencies (CUDA, ROCm, OpenVINO, proj-data-*, etc.) or even downgrade your ROCm stack.
-  - Instead, build `whisper-cli` from the official repository (see Quick start step 2).
-- Clipboard tool: `xclip` (X11) or `wl-clipboard` (Wayland)
-- `alsa-utils` (for `arecord`)
-- `libnotify` or `libnotify-bin` (notifications)
-- Typing tool: `xdotool` (X11) or `ydotool` (Wayland); optional if you only use clipboard
+The script itself calls these by name. Install whichever pair matches your session:
 
-## Quick start
+| Purpose          | X11        | Wayland       | Notes                                         |
+|------------------|------------|---------------|-----------------------------------------------|
+| Clipboard        | `xclip`    | `wl-copy`     | From `wl-clipboard`                           |
+| Typing           | `xdotool`  | `ydotool`     | `ydotool` needs `ydotoold` running            |
+| Audio capture    | `arecord`  | `arecord`     | From `alsa-utils`                             |
+| Notifications    | `notify-send` | `notify-send` | From `libnotify` / `libnotify-bin`         |
+| Transcription    | `whisper-cli` | `whisper-cli` | Built from `whisper.cpp`                   |
 
-1. **Install helper dependencies** (from project root):
+The Whisper binary can be renamed by setting `WHISPER_BIN` in the environment. The model path is hardcoded to `~/.local/share/whisper/ggml-base.bin`; change the `MODEL` variable at the top of the script to point elsewhere.
 
-   ```bash
-   chmod +x install-voxtyper.sh
-   ./install-voxtyper.sh
-   ```
+## Install
 
-   This reads `/etc/os-release` (using `ID` and `ID_LIKE`) to detect your distro and install the right helper packages, and falls back to the available package manager (`dnf` / `apt` / `pacman` / `zypper`) if it sees an unknown ID.
-   It knows about:
+### 1. Helper tools
 
-   - **Fedora / Nobara / RHEL family**
-   - **Debian / Ubuntu and derivatives** (incl. PikaOS, Linux Mint, Pop!_OS, etc.)
-   - **Arch-based** (Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy, etc.)
-   - **openSUSE** (Tumbleweed, Leap, MicroOS)
-   - **Void Linux**
-   - **Alpine Linux** (uses `dotool` as an optional `ydotool` alternative)
-   - **Gentoo**
-   - **NixOS** (prints a `configuration.nix` snippet instead of trying to install packages directly)
-
-   Use `--no-script` to only install packages (skip copying `voxtyper.sh` to `~/.local/bin/voxtyper`), or `--dry-run` to see what would run without making changes.  
-   You can also pass `--build-whisper` to let the installer try to clone and build `whisper.cpp` from source for you (using the same steps as below), if `git`/`cmake`/`make`/`g++` are available.
-
-   > **Guix System**: Skip the installer. Declare the following packages in `~/.config/guix/home.scm` and run `guix home reconfigure`:
-   > ```
-   > "alsa-utils" "alsa-plugins:pulseaudio" "xclip" "xdotool"
-   > ```
-   > `libnotify` is provided by `%desktop-services`; if missing, add it too.
-
-2. **Install whisper.cpp from source (recommended)**  
-   This avoids distro `whisper-cpp` packages pulling in huge GPU/GIS stacks.
-
-   ```bash
-   cd ~/dev              # or wherever you keep source
-   git clone https://github.com/ggerganov/whisper.cpp.git
-   cd whisper.cpp
-
-   cmake -B build -DCMAKE_BUILD_TYPE=Release
-   cmake --build build -j"$(nproc)"
-
-   mkdir -p ~/.local/bin
-   cp build/bin/whisper-cli ~/.local/bin/whisper-cli
-   ```
-
-   After this, `whisper-cli --help` should work and `voxtyper.sh` will be able to find it.
-
-   > **Guix System**: Build inside a `guix shell` to link against Guix's glibc instead of the host toolchain:
-   > ```bash
-   > guix shell gcc-toolchain cmake make -- bash -c "
-   >   cd ~/dev/whisper.cpp && \
-   >   rm -rf build && \
-   >   cmake -B build -DCMAKE_BUILD_TYPE=Release && \
-   >   cmake --build build -j\$(nproc) && \
-   >   cp build/bin/whisper-cli ~/.local/bin/whisper-cli
-   > "
-   > ```
-
-3. **Download a Whisper model** (e.g. multilingual base):
-
-   ```bash
-   mkdir -p ~/.local/share/whisper
-   cd ~/.local/share/whisper
-   wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
-   ```
-
-   If `wget` fails with a certificate error on Guix, use `curl` with the system CA bundle:
-   ```bash
-   curl --cacert /etc/ssl/certs/ca-certificates.crt \
-     -L -o ~/.local/share/whisper/ggml-base.bin \
-     https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
-   ```
-
-4. **Bind a shortcut** to `~/.local/bin/voxtyper` (e.g. `Super+V` in XFCE, `Meta+X` in KDE, or your compositor config).  
-   Press once to start recording, press again to stop and transcribe.
-
-   The script is self-contained and sets its own `PATH`, so it works from any desktop-environment shortcut without requiring a login shell.
-
-## How it works
-
-- **First keypress** — Shows a notification *"Now listening for VoxTyper"* and starts `arecord` in the background (mono, WAV).
-- **Second keypress** — Stops recording, shows *"Stopped VoxTyper — transcribing..."*, runs `whisper-cli` with `--language auto`, then:
-  1. Copies the transcribed text to the clipboard
-  2. Types it into the active window with `xdotool` (X11) or `ydotool` (Wayland)
-
-Temporary files in `/tmp` are cleaned up after each cycle.
-
-## Quick test
+From the repo root:
 
 ```bash
-whisper-cli --help | head -3           # check whisper works
-arecord -f cd -c 1 -t wav /tmp/t.wav -d 3   # record 3s
-whisper-cli -m ~/.local/share/whisper/ggml-base.bin -f /tmp/t.wav -otxt -of /tmp/t
-cat /tmp/t.txt                                # see transcription
+chmod +x install-voxtyper.sh
+./install-voxtyper.sh
 ```
+
+The installer reads `/etc/os-release` (`ID` and `ID_LIKE`), picks a distribution family, and installs only the helper packages. It deliberately does not install the distro `whisper-cpp` package; see the next section for why.
+
+Families it recognises:
+
+- Fedora, Nobara, RHEL, Rocky, Alma, CentOS Stream
+- Debian, Ubuntu, Linux Mint, Pop!\_OS, PikaOS, Zorin, KDE Neon, elementary, Kali, MX
+- Arch, CachyOS, EndeavourOS, Manjaro, Garuda, ArcoLinux, Omarchy
+- openSUSE Tumbleweed, Leap, MicroOS
+- Void, Alpine, Gentoo
+- NixOS (prints a configuration snippet instead of installing)
+
+If the `ID` is unknown, the installer falls back to whichever package manager it finds (`dnf`, `apt`, `pacman`, `zypper`) and uses the matching family. If none of those exist it prints the manual package list and exits.
+
+Flags:
+
+- `--no-script` install packages only; do not copy `voxtyper.sh` to `~/.local/bin/voxtyper`.
+- `--dry-run` print the commands that would run.
+- `--build-whisper` after the package step, clone and build `whisper.cpp` from source into `~/dev/whisper.cpp` (override with `WHISPER_SRC_DIR`) and copy `whisper-cli` to `~/.local/bin`. Requires `git`, `cmake`, `make`, and `g++`.
+
+Guix System is intentionally not handled by the installer. Add the packages declaratively in `~/.config/guix/home.scm`:
+
+```
+"alsa-utils" "alsa-plugins:pulseaudio" "xclip" "xdotool"
+```
+
+then run `guix home reconfigure`. `libnotify` usually comes in via `%desktop-services`.
+
+### 2. whisper.cpp
+
+The README used to suggest `dnf install whisper-cpp` and the equivalents on other distros. We no longer recommend that. On several distributions the package pulls in CUDA, ROCm, OpenVINO, or large `proj-data-*` GIS tables, and on at least one (Fedora-family with ROCm installed) it has been reported to downgrade the existing ROCm stack. Building from source avoids all of that:
+
+```bash
+cd ~/dev   # or anywhere
+git clone https://github.com/ggerganov/whisper.cpp.git
+cd whisper.cpp
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j"$(nproc)"
+mkdir -p ~/.local/bin
+cp build/bin/whisper-cli ~/.local/bin/whisper-cli
+```
+
+On Guix System, build inside a `guix shell` so the binary links against Guix's glibc:
+
+```bash
+guix shell gcc-toolchain cmake make -- bash -c "
+  cd ~/dev/whisper.cpp && \
+  rm -rf build && \
+  cmake -B build -DCMAKE_BUILD_TYPE=Release && \
+  cmake --build build -j\$(nproc) && \
+  cp build/bin/whisper-cli ~/.local/bin/whisper-cli
+"
+```
+
+### 3. Model
+
+The default model is `ggml-base.bin`, the multilingual base. It is small enough to transcribe in near real time on a modern CPU and works well enough for dictation in English plus most major European languages.
+
+```bash
+mkdir -p ~/.local/share/whisper
+cd ~/.local/share/whisper
+wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+```
+
+If `wget` complains about certificates on Guix, use `curl` with the system CA bundle:
+
+```bash
+curl --cacert /etc/ssl/certs/ca-certificates.crt \
+  -L -o ~/.local/share/whisper/ggml-base.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+```
+
+For better accuracy at the cost of latency, swap in `ggml-small.bin`, `ggml-medium.bin`, or `ggml-large.bin` and update the `MODEL=` line in the script.
+
+### 4. Keybinding
+
+The installer drops the script at `~/.local/bin/voxtyper`. Bind that path to a shortcut in your desktop environment or compositor. A few examples:
+
+- KDE Plasma: System Settings -> Shortcuts -> Custom Shortcuts -> Command/URL.
+- GNOME: Settings -> Keyboard -> Custom Shortcuts.
+- XFCE: Settings -> Keyboard -> Application Shortcuts.
+- Hyprland, Sway, river, niri: a `bind` line in the compositor config pointing at `~/.local/bin/voxtyper`.
+
+If you use `ydotool`, enable the daemon once: `sudo systemctl enable --now ydotoold.service`. Without it, transcription still happens and the text still lands on the clipboard; you just have to paste manually.
+
+## Sanity check
+
+```bash
+whisper-cli --help | head -3
+arecord -f cd -c 1 -t wav /tmp/t.wav -d 3
+whisper-cli -m ~/.local/share/whisper/ggml-base.bin -f /tmp/t.wav -otxt -of /tmp/t
+cat /tmp/t.txt
+```
+
+If those four commands produce the expected output, the keybinding should work end to end.
+
+## Configuration knobs
+
+There are very few. All of them live near the top of `voxtyper.sh`:
+
+- `MODEL` path to the `.bin` model.
+- `WHISPER_BIN` name of the Whisper executable (defaults to `whisper-cli`; can be overridden from the environment).
+- `TMP_WAV` / `TMP_PREFIX` where the recording and the transcript land. `/tmp` by default.
+- `PATH` export at the top of the file. Adjust if your tools live somewhere unusual.
+
+The recording format is fixed (`-f cd -c 1`, i.e. 16-bit 44.1 kHz mono WAV). Whisper resamples internally, so this is fine for dictation.
 
 ## Version history
 
-- **0.1.0** — Initial release for Arch-based distros with Hyprland (see [original thread](https://linux-user.gr/t/odhgos-gia-offline-voxtype-style-dictation-se-arch-hyprland/6142)).
-- **0.2.0** — VoxTyper initial public repo release (Nobara/KDE focus).
-- **0.2.2** — Extended multi-distro installer (`install-voxtyper.sh`), smarter `/etc/os-release` detection (PikaOS, CachyOS, Omarchy, etc.), and moved the detailed Nobara/KDE guide to `docs/VOXTYPE_NOBARA.md`.
-- **0.3.0** — Stop auto-installing distro `whisper-cpp` packages; recommend building whisper.cpp from source instead; update installer messaging and docs accordingly.
-- **0.3.1** — Add optional `--build-whisper` flag to the installer to clone/build whisper.cpp from source automatically when requested.
-- **0.4.0** — X11 support (`xclip`/`xdotool` as primary, Wayland fallback); Guix System setup guide; self-contained PATH for desktop shortcuts; improved notification messages.
+- 0.1.0 First release. Arch + Hyprland. Posted as a guide on linux-user.gr.
+- 0.2.0 First public repo. Nobara / KDE focus.
+- 0.2.2 Multi-distro installer, `/etc/os-release`-driven detection, separate Nobara guide moved to `docs/`.
+- 0.3.0 Stopped recommending distro `whisper-cpp` packages. Switched the documentation to source builds.
+- 0.3.1 `--build-whisper` flag in the installer for an automated source build.
+- 0.4.0 X11 support with `xclip`/`xdotool` as the preferred tools and the Wayland pair as fallback; Guix System notes; self-contained `PATH` so the script works from desktop shortcuts; updated notification text.
 
-## Credits and inspiration
+## Credits
 
-VoxTyper was inspired by **VoxType** from [Omarchy](https://learn.omacom.io/2/the-omarchy-manual/107/ai) — the idea of push-to-talk, offline voice-to-text that types into the active field. This project is an independent implementation using [whisper.cpp](https://github.com/ggerganov/whisper.cpp) and does not use any Omarchy or third-party dictation services.
+The push-to-talk, type-into-the-active-field idea comes from VoxType in Omarchy (https://learn.omacom.io/2/the-omarchy-manual/107/ai). VoxTyper is an independent reimplementation on top of whisper.cpp and shares no code with Omarchy.
 
 ## License
 
-Scripts in this repository are provided as-is. You use whisper.cpp and other dependencies under their respective licenses (e.g. MIT for whisper.cpp).
+The scripts in this repository are MIT-licensed (see `LICENSE`). whisper.cpp and the helper tools each carry their own licences, which apply when you install or build them.
