@@ -5,3 +5,4 @@
 *.md
 !README.md
 !docs/VOXTYPE_NOBARA.md
+!docs/GUIX_AND_NIXOS.md

@@ -78,6 +78,8 @@ Guix System is intentionally not handled by the installer. Add the packages decl
 
 then run `guix home reconfigure`. `libnotify` usually comes in via `%desktop-services`.
 
+For the full Guix and NixOS story (why the script has a `/gnu/store` fallback, how to build `whisper.cpp` inside `guix shell` / `nix-shell`, certificate workarounds), see [`docs/GUIX_AND_NIXOS.md`](docs/GUIX_AND_NIXOS.md).
+
 ### 2. whisper.cpp
 
 The README used to suggest `dnf install whisper-cpp` and the equivalents on other distros. We no longer recommend that. On several distributions the package pulls in CUDA, ROCm, OpenVINO, or large `proj-data-*` GIS tables, and on at least one (Fedora-family with ROCm installed) it has been reported to downgrade the existing ROCm stack. Building from source avoids all of that:
