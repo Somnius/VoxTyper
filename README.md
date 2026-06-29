@@ -4,7 +4,7 @@ Offline push-to-talk voice dictation for Linux. One shortcut starts recording, t
 
 Nothing leaves the machine. There is no account, no API key, no daemon beyond what your distro already ships with.
 
-- Version: 0.4.0
+- Version: 0.5.0
 - License: MIT (see `LICENSE`)
 - Author: Lefteris @SomniusX
 
@@ -12,10 +12,10 @@ Nothing leaves the machine. There is no account, no API key, no daemon beyond wh
 
 `voxtyper.sh` is a single Bash script invoked by a keybinding. It works as a toggle:
 
-1. First press. The script sees that `arecord` is not running, shows a "Now listening for VoxTyper" notification, and launches `arecord` in the background to capture mono CD-quality WAV into `/tmp/whisper-record.wav`.
-2. Second press. The script sees `arecord` running, sends it `SIGINT`, then calls `whisper-cli` against `~/.local/share/whisper/ggml-base.bin` with `--language auto`. The transcript is collapsed to a single line, copied to the clipboard, and typed into the active window. Temporary files are removed on the way out.
+1. First press. The script shows a "Now listening for VoxTyper" notification and launches the first available recorder (`parecord`, `pw-record`, or `arecord`) in the background, capturing 16 kHz mono WAV into `$XDG_RUNTIME_DIR/voxtyper-record.wav`. It records its own PID and the start timestamp into a state file in the same directory.
+2. Second press. The script reads the state file, signals the recorder with `SIGINT`, then calls `whisper-cli` against `~/.local/share/whisper/ggml-base.bin` with `--language auto`. The transcript is collapsed to a single line, copied to the clipboard, and typed into the active window via `wtype`, `xdotool`, or `ydotool` (whichever resolves first). Temporary files are removed on the way out.
 
-Clipboard and typing tools are chosen at runtime. The script prefers the X11 tools (`xclip`, `xdotool`) when present and falls back to their Wayland equivalents (`wl-copy`, `ydotool`). If only one path is available, only that one is used; if neither typing tool is installed you still get the text on the clipboard.
+Tools are picked at runtime in the order shown in the Requirements table below. The clipboard is always populated, even if typing succeeds, so paste remains available as a backup. Two safety nets sit on top of the basic toggle: a PID-file mutex in `$XDG_RUNTIME_DIR` so two presses landing on top of each other cannot interleave, and a two-second debounce window that ignores a second invocation arriving immediately after the first (KDE Plasma sometimes fires global shortcuts on both press and release).
 
 The script sets its own `PATH` (including `~/.local/bin`, Guix home, and `/run/current-system/profile/bin`) so it runs identically from a desktop-environment shortcut, a terminal, or a window-manager keybind, without needing a login shell.
 
@@ -23,20 +23,20 @@ The script sets its own `PATH` (including `~/.local/bin`, Guix home, and `/run/c
 
 - Not a continuous transcriber. Recording is bounded by your two key presses.
 - Not a model. You bring your own Whisper `.bin` file.
-- Not a wrapper around a cloud API. The pipeline is `arecord` -> `whisper-cli` -> clipboard/type.
+- Not a wrapper around a cloud API. The pipeline is recorder -> `whisper-cli` -> typing tool / clipboard.
 - Not a GUI. Configuration is done by editing the script or exporting `WHISPER_BIN`.
 
 ## Requirements
 
-The script itself calls these by name. Install whichever pair matches your session:
+The script picks the first available tool in each category at runtime, so you only need one entry from each row to be installed. Preferred options are listed first.
 
-| Purpose          | X11        | Wayland       | Notes                                         |
-|------------------|------------|---------------|-----------------------------------------------|
-| Clipboard        | `xclip`    | `wl-copy`     | From `wl-clipboard`                           |
-| Typing           | `xdotool`  | `ydotool`     | `ydotool` needs `ydotoold` running            |
-| Audio capture    | `arecord`  | `arecord`     | From `alsa-utils`                             |
-| Notifications    | `notify-send` | `notify-send` | From `libnotify` / `libnotify-bin`         |
-| Transcription    | `whisper-cli` | `whisper-cli` | Built from `whisper.cpp`                   |
+| Purpose         | Preferred                              | Fallbacks                                          | Notes                                                                                  |
+|-----------------|----------------------------------------|----------------------------------------------------|----------------------------------------------------------------------------------------|
+| Audio capture   | `parecord` (PulseAudio)                | `pw-record` (PipeWire), then `arecord` (ALSA)      | All three are recorded at 16 kHz mono, the rate Whisper resamples to anyway.            |
+| Typing          | `wtype` (Wayland virtual keyboard)     | `xdotool` (X11), then `ydotool` (Wayland w/ daemon) | `wtype` needs no daemon and no `/dev/uinput` permissions, so it is the cleanest option. |
+| Clipboard       | `wl-copy` (Wayland)                    | `xclip` (X11)                                       | Clipboard is always populated as a backup, even if typing succeeds.                     |
+| Notifications   | `notify-send`                          | (none — script falls back to stdout)                | From `libnotify` / `libnotify-bin`.                                                     |
+| Transcription   | `whisper-cli`                          | Override via `WHISPER_BIN=...`                      | Built from `whisper.cpp`.                                                               |
 
 The Whisper binary can be renamed by setting `WHISPER_BIN` in the environment. The model path is hardcoded to `~/.local/share/whisper/ggml-base.bin`; change the `MODEL` variable at the top of the script to point elsewhere.
 
@@ -154,10 +154,11 @@ There are very few. All of them live near the top of `voxtyper.sh`:
 
 - `MODEL` path to the `.bin` model.
 - `WHISPER_BIN` name of the Whisper executable (defaults to `whisper-cli`; can be overridden from the environment).
-- `TMP_WAV` / `TMP_PREFIX` where the recording and the transcript land. `/tmp` by default.
+- `RUNTIME_DIR` where recordings, transcripts, the PID lock, the state file, and the debug log are kept. Defaults to `$XDG_RUNTIME_DIR` (typically a tmpfs cleaned at logout) with a fall back to `~/.cache/voxtyper`.
+- `DEBOUNCE_SECONDS` how long after the start of a recording any second invocation is treated as a spurious key-up event. Defaults to `2`; KDE Plasma is the main reason this exists.
 - `PATH` export at the top of the file. Adjust if your tools live somewhere unusual.
 
-The recording format is fixed (`-f cd -c 1`, i.e. 16-bit 44.1 kHz mono WAV). Whisper resamples internally, so this is fine for dictation.
+The recording format is 16 kHz mono, 16-bit WAV — the rate Whisper actually wants — so there is no resampling at transcription time. The script picks the first available recorder among `parecord` (PulseAudio), `pw-record` (PipeWire), and `arecord` (ALSA).
 
 ## Version history
 
@@ -167,6 +168,7 @@ The recording format is fixed (`-f cd -c 1`, i.e. 16-bit 44.1 kHz mono WAV). Whi
 - 0.3.0 Stopped recommending distro `whisper-cpp` packages. Switched the documentation to source builds.
 - 0.3.1 `--build-whisper` flag in the installer for an automated source build.
 - 0.4.0 X11 support with `xclip`/`xdotool` as the preferred tools and the Wayland pair as fallback; Guix System notes; self-contained `PATH` so the script works from desktop shortcuts; updated notification text.
+- 0.5.0 Audio capture chain (`parecord` -> `pw-record` -> `arecord`) at native 16 kHz mono; `wtype` added as the preferred Wayland typing tool ahead of `ydotool`; runtime state moved from `/tmp` into `$XDG_RUNTIME_DIR` with a `~/.cache` fallback; PID-file mutex to serialize concurrent presses; KDE Plasma key-up debounce; per-invocation debug log under `$XDG_RUNTIME_DIR/voxtyper-debug.log`.
 
 ## Credits
 

@@ -35,13 +35,17 @@ Open `/etc/nixos/configuration.nix` and add the helpers to `environment.systemPa
 
   environment.systemPackages = with pkgs; [
     wl-clipboard   # provides wl-copy / wl-paste
-    alsa-utils     # provides arecord
+    wtype          # preferred Wayland typing tool (no daemon needed)
+    pulseaudio     # provides parecord
+    alsa-utils     # provides arecord (last-resort recorder)
     libnotify      # provides notify-send
-    ydotool        # provides ydotool (the typing tool)
+    # ydotool      # only needed if your compositor does not support the
+                   # virtual-keyboard protocol that wtype uses
   ];
 
-  # Daemon and uinput permissions for ydotool, in one go:
-  programs.ydotool.enable = true;
+  # Only required if you fall back to ydotool. wtype alone needs nothing
+  # at the system level:
+  # programs.ydotool.enable = true;
 }
 ```
 
@@ -306,7 +310,7 @@ If all relevant steps work, the keybind will too.
 - **`whisper-cli: No such file or directory` or loader errors.** Built outside `nix-shell`. Remove `build/`, re-enter the shell, rebuild.
 - **`ydotool` does nothing.** Either `ydotoold` is not running (`systemctl status ydotoold`), or your user is not in the `input` group. Confirm `programs.ydotool.enable = true` in `configuration.nix` and rebuild. Log out and back in after a group change.
 - **Notifications missing but transcription happens.** `notify-send` is not on `PATH`. Confirm `libnotify` is in `environment.systemPackages` and rebuild.
-- **Recording starts but the second press does nothing.** The script uses `pgrep -x arecord` to decide between starting and stopping. Check for orphaned `arecord` processes from a previous run; `pkill arecord` and try again.
+- **Recording starts but the second press does nothing.** The toggle is driven by `$XDG_RUNTIME_DIR/voxtyper.state` and `$XDG_RUNTIME_DIR/voxtyper.lock`. If a previous invocation crashed, the lock or state file can be left behind. Tail `$XDG_RUNTIME_DIR/voxtyper-debug.log` to see the most recent activity; if you see "Debounce" entries on every press, your shortcut is firing twice (KDE key-down + key-up) — increase `DEBOUNCE_SECONDS` at the top of `voxtyper.sh`.
 - **Keybind does nothing, but `voxtyper` from a terminal works.** The desktop environment is not honouring the binding, or the path in the shortcut is wrong. Use the absolute path (`/home/<you>/.local/bin/voxtyper`) rather than a relative one or `~/`.
 - **The shortcut works from one session type but not the other.** You probably switched between X11 and Wayland sessions and the helper tools you installed only cover one of them. Check `loginctl show-session $XDG_SESSION_ID -p Type` and adjust `environment.systemPackages` accordingly.
 - **`nix-shell` is slow on every build.** First-time use builds or substitutes the entire toolchain. Subsequent invocations reuse the store and are fast.
@@ -448,19 +452,17 @@ Use the absolute store-profile path, not `~/.local/bin/voxtyper` and not a bare 
 
 For non-KDE environments, use whatever your declarative shortcut mechanism is. For Sway, that is a `bindsym` line in the Sway config (which can be generated from Home Manager). For Hyprland, a `bind = ...` line. The principle is the same: keep the keybind in source control next to the package.
 
-### Improvements that the script itself ships with (script-level, not NixOS-specific)
+### What the script body does on top of the basic toggle (script-level, not NixOS-specific)
 
-The five improvements below live inside the script body that `writeShellScriptBin` wraps. They are not Nix features, they do not require Home Manager, and they would work copied verbatim into `~/.local/bin/voxtyper` on Fedora, Arch, or anything else. They are documented here because the Nix package is the version that has them today; the portable `voxtyper.sh` at the root of this repository is a more conservative variant.
+The portable `voxtyper.sh` at the root of this repository and the Nix-packaged variant described above share the same script body. The five behaviors listed below are not Nix features, they do not require Home Manager, and they apply equally on Fedora, Arch, Guix, or anywhere else. They are summarised here so that the Nix package writeup is complete, but they describe how `voxtyper.sh` itself behaves as of 0.5.0.
 
-The `voxtyper.sh` in the root of this repository is the portable, distro-agnostic version. The Nix-packaged variant described above tends to evolve faster because the maintainer's daily-driver uses it. As of this writing, it differs from the repo script in five ways that are worth knowing about:
-
-1. **Audio backend fallback chain.** It tries `parecord --channels=1 --rate=16000` first (PulseAudio at the exact format Whisper actually wants, avoiding a runtime resample), then `pw-record` (PipeWire's native recorder), and only falls back to `arecord -f cd -c 1` if neither is present. On a PipeWire/PulseAudio host, `arecord` is the slowest of the three and the one most likely to produce a zero-byte WAV under unusual permissions.
-2. **`wtype` instead of `ydotool` for typing on Wayland.** `wtype` talks the virtual-keyboard Wayland protocol directly, so it does not need a `ydotoold` daemon, does not need `/dev/uinput` permissions, and does not need a group membership change. It works on KDE Plasma 6, Sway, Hyprland, and other wlroots-based compositors without setup. The script tries `wtype`, falls back to `wl-copy` if `wtype` fails (e.g. the focused surface refuses synthetic input), and writes the transcript to `/tmp/voxtyper-last.txt` as a last resort.
-3. **PID-file mutex in `XDG_RUNTIME_DIR`.** Two presses landing close together would otherwise interleave. The script writes its own PID to `$XDG_RUNTIME_DIR/voxtyper.lock` on entry and exits early if a previous instance is still alive. `flock(1)` is deliberately not used here: the recorder is backgrounded, and the child inherits the locked fd, which would hold the lock until the recorder exits and break the next invocation.
-4. **KDE key-down/key-up debounce.** KDE Plasma sometimes fires a global shortcut on both press and release. The script tracks the start time in `$XDG_RUNTIME_DIR/voxtyper.state` and treats any second press within two seconds of the first as a spurious key-up, ignoring it silently. Without this, every recording would stop a fraction of a second after it started.
+1. **Audio backend fallback chain.** The script tries `parecord --channels=1 --rate=16000` first (PulseAudio at the exact format Whisper actually wants, avoiding a runtime resample), then `pw-record --channels=1 --rate=16000` (PipeWire's native recorder), and only falls back to `arecord -f S16_LE -c 1 -r 16000` if neither is present. On a PipeWire/PulseAudio host, `arecord` is the slowest of the three and the one most likely to produce a zero-byte WAV under unusual permissions.
+2. **`wtype` is the preferred typing tool on Wayland.** `wtype` talks the virtual-keyboard Wayland protocol directly, so it does not need a `ydotoold` daemon, does not need `/dev/uinput` permissions, and does not need a group membership change. It works on KDE Plasma 6, Sway, Hyprland, and other wlroots-based compositors without setup. The script tries `wtype` first, then `xdotool` (X11), then `ydotool` (Wayland with the daemon). The clipboard is populated independently as a backup, so paste remains an option even if typing fails.
+3. **PID-file mutex in `XDG_RUNTIME_DIR`.** Two presses landing close together would otherwise interleave. The script writes its own PID to `$XDG_RUNTIME_DIR/voxtyper.lock` on entry and exits early if a previous instance is still alive. `flock(1)` is deliberately not used: the recorder is backgrounded, and the child would inherit the locked fd, which would hold the lock until the recorder exits and break the next invocation.
+4. **KDE key-down/key-up debounce.** KDE Plasma sometimes fires a global shortcut on both press and release. The script tracks the recorder PID and the start timestamp in `$XDG_RUNTIME_DIR/voxtyper.state` and treats any second press within `DEBOUNCE_SECONDS` (default `2`) of the first as a spurious key-up, ignoring it silently. Without this, every recording would stop a fraction of a second after it started.
 5. **Debug log.** Every invocation appends to `$XDG_RUNTIME_DIR/voxtyper-debug.log`, recording the audio backend chosen, the whisper-cli output, the typed length, and any failure. When something stops working, that log is the first place to look.
 
-These are not features that require Nix; the same script body would work copied into `~/.local/bin/voxtyper` on any distribution. They are written up here because the Nix package is where they live today.
+The Nix package wraps the same script body; nothing about these five behaviors is tied to Nix.
 
 ### Verification (NixOS)
 
