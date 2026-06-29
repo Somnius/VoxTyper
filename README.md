@@ -78,7 +78,7 @@ Guix System is intentionally not handled by the installer. Add the packages decl
 
 then run `guix home reconfigure`. `libnotify` usually comes in via `%desktop-services`.
 
-For the full Guix System story (why the script has a `/gnu/store` fallback, how to build `whisper.cpp` inside `guix shell`, the `wget`/TLS workaround), see [`docs/GUIX.md`](docs/GUIX.md). For the NixOS equivalent (declaring helpers in `configuration.nix`, `programs.ydotool.enable`, building inside `nix-shell`), see [`docs/NIXOS.md`](docs/NIXOS.md). A focused Fedora/Nobara walkthrough is in [`docs/NOBARA.md`](docs/NOBARA.md).
+For the full Guix System story (why the script has a `/gnu/store` fallback, how to build `whisper.cpp` inside `guix shell`, the `wget`/TLS workaround), see [`docs/GUIX.md`](docs/GUIX.md). For the NixOS equivalent (declaring helpers in `configuration.nix`, `programs.ydotool.enable`, building inside `nix-shell`), see [`docs/NIXOS.md`](docs/NIXOS.md). [`docs/NIXOS.md`](docs/NIXOS.md) also has a "Going fully declarative" section that documents the NixOS-only path: packaging `voxtyper` with `pkgs.writeShellScriptBin`, pinning the model via `pkgs.fetchurl`, and wiring the KDE keybind through `plasma-manager`. A focused Fedora/Nobara walkthrough is in [`docs/NOBARA.md`](docs/NOBARA.md).
 
 ### 2. whisper.cpp
 
