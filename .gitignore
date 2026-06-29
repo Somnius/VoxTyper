@@ -4,5 +4,6 @@
 # Markdown docs (keep only README for repo, plus selected docs)
 *.md
 !README.md
-!docs/VOXTYPE_NOBARA.md
-!docs/GUIX_AND_NIXOS.md
+!docs/NOBARA.md
+!docs/GUIX.md
+!docs/NIXOS.md
