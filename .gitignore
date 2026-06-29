@@ -1,6 +1,9 @@
 # Notes (LaTeX style / scratch)
 *.sty
 
+# Local helper scripts not part of the project
+resume-claude.sh
+
 # Markdown docs (keep only README for repo, plus selected docs)
 *.md
 !README.md
